@@ -2,11 +2,10 @@ package com.carlospinan.firstopenglproject.utilities.common
 
 import android.app.ActivityManager
 import android.content.Context
+import android.opengl.GLSurfaceView
 import android.os.Bundle
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
-import com.carlospinan.firstopenglproject.R
-import kotlinx.android.synthetic.main.activity_main.*
 
 abstract class BaseGLActivity : AppCompatActivity() {
 
@@ -18,7 +17,8 @@ abstract class BaseGLActivity : AppCompatActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        setContentView(R.layout.activity_main)
+        val glSurfaceView = GLSurfaceView(this)
+        setContentView(glSurfaceView)
 
         val configurationInfo = activityManager.deviceConfigurationInfo
         val supportGLEs2 = configurationInfo.reqGlEsVersion >= 0x20000

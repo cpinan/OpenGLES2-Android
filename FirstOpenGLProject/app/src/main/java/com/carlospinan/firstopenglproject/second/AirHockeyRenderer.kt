@@ -1,9 +1,14 @@
 package com.carlospinan.firstopenglproject.second
 
 import android.content.Context
-import android.opengl.GLES20.*
+import android.opengl.GLES20.GL_COLOR_BUFFER_BIT
 import android.opengl.Matrix
 import com.carlospinan.firstopenglproject.R
+import com.carlospinan.firstopenglproject.second.models.BYTES_PER_FLOAT
+import com.carlospinan.firstopenglproject.second.models.Mallet
+import com.carlospinan.firstopenglproject.second.models.Table
+import com.carlospinan.firstopenglproject.second.programs.ColorShaderProgram
+import com.carlospinan.firstopenglproject.second.programs.TextureShaderProgram
 import com.carlospinan.firstopenglproject.utilities.*
 import com.carlospinan.firstopenglproject.utilities.common.BaseGLRenderer
 import java.nio.ByteBuffer
@@ -14,7 +19,6 @@ import javax.microedition.khronos.opengles.GL10
 
 private const val POSITION_COMPONENT_COUNT = 4
 private const val COLOR_COMPONENT_COUNT = 3
-private const val BYTES_PER_FLOAT = 4
 private const val STRIDE = (POSITION_COMPONENT_COUNT + COLOR_COMPONENT_COUNT) * BYTES_PER_FLOAT
 
 //private const val U_COLOR = "u_Color"
@@ -44,6 +48,13 @@ class AirHockeyRenderer(
     private var vertexData: FloatBuffer
     private val projectionMatrix = FloatArray(16)
     private val modelMatrix = FloatArray(16)
+
+    private lateinit var table: Table
+    private lateinit var mallet: Mallet
+
+    private lateinit var textureShaderProgram: TextureShaderProgram
+    private lateinit var colorShaderProgram: ColorShaderProgram
+    private var texture: Int = 0
 
     // BOTTOM-LEFT ; TOP-LEFT ; TOP-RIGHT ; BOTTOM-RIGHT
     /*
@@ -139,6 +150,15 @@ class AirHockeyRenderer(
     override fun onSurfaceCreated(unused: GL10?, config: EGLConfig?) {
         gl2ClearColor(alpha = 0.0f)
 
+        textureShaderProgram = TextureShaderProgram(context)
+        colorShaderProgram = ColorShaderProgram(context)
+
+        table = Table()
+        mallet = Mallet()
+
+        texture = context.loadTexture(R.drawable.air_hockey_surface)
+
+        /*
         val vertexShaderSource = context.readTextFileFromResource(R.raw.simple_vertex_shader)
         val fragmentShaderSource = context.readTextFileFromResource(R.raw.simple_fragment_shader)
 
@@ -179,6 +199,7 @@ class AirHockeyRenderer(
 
         // Associate color to shader
         gl2EnableVertexAttribArray(aColorLocation)
+         */
 
     }
 
@@ -257,8 +278,23 @@ class AirHockeyRenderer(
     }
 
     override fun onDrawFrame(unused: GL10?) {
-        gl2Clear()
-        gl2UniformMatrix4fv(uMatrixLocation, 1, false, projectionMatrix, 0)
+        // gl2Clear()
+        // Clear the rendering surface.
+        gl2Clear(GL_COLOR_BUFFER_BIT)
+
+        // Draw the table.
+        textureShaderProgram.useProgram()
+        textureShaderProgram.setUniforms(projectionMatrix, texture)
+        table.bindData(textureShaderProgram)
+        table.draw()
+
+        // Draw the mallets
+        colorShaderProgram.useProgram()
+        colorShaderProgram.setUniforms(projectionMatrix)
+        mallet.bindData(colorShaderProgram)
+        mallet.draw()
+
+        // gl2UniformMatrix4fv(uMatrixLocation, 1, false, projectionMatrix, 0)
 
         //gl2Uniform4f(uColorLocation, 1.0f, 0.0f, 0.0f, 1.0f)
         //gl2DrawArrays(GL_TRIANGLES, 11, 6)
@@ -281,7 +317,7 @@ class AirHockeyRenderer(
          * Since there are three vertices per triangle, this call will end up drawing two triangles.
          */
         //gl2DrawArrays(GL_TRIANGLES, 0, 6)
-        gl2DrawArrays(GL_TRIANGLE_FAN, 0, 6)
+        //gl2DrawArrays(GL_TRIANGLE_FAN, 0, 6)
 
         /**
          * We set the color to red by passing in 1.0f to the first component (red) and 0.0f to green and blue.
@@ -292,15 +328,15 @@ class AirHockeyRenderer(
          * Since there are two vertices per line, we’ll end up drawing one line using these positions:
          */
         // gl2Uniform4f(uColorLocation, 1.0f, 0.0f, 0.0f, 1.0f)
-        gl2DrawArrays(GL_LINES, 6, 2)
+        //gl2DrawArrays(GL_LINES, 6, 2)
 
         // Draw the first mallet in blue
         // gl2Uniform4f(uColorLocation, 0.0f, 0.0f, 1.0f, 1.0f)
-        gl2DrawArrays(GL_POINTS, 8, 1)
+        //gl2DrawArrays(GL_POINTS, 8, 1)
 
         // Draw the first mallet in red
         // gl2Uniform4f(uColorLocation, 1.0f, 0.0f, 0.0f, 1.0f)
-        gl2DrawArrays(GL_POINTS, 9, 1)
+        //gl2DrawArrays(GL_POINTS, 9, 1)
 
         // CHALLENGES
         // Pock center in Green
