@@ -2,6 +2,7 @@ package com.carlospinan.firstopenglproject.second
 
 import android.content.Context
 import android.opengl.GLES20.*
+import android.opengl.Matrix
 import com.carlospinan.firstopenglproject.R
 import com.carlospinan.firstopenglproject.utilities.*
 import com.carlospinan.firstopenglproject.utilities.common.BaseGLRenderer
@@ -11,29 +12,48 @@ import java.nio.FloatBuffer
 import javax.microedition.khronos.egl.EGLConfig
 import javax.microedition.khronos.opengles.GL10
 
-private const val POSITION_COMPONENT_COUNT = 2
+private const val POSITION_COMPONENT_COUNT = 4
+private const val COLOR_COMPONENT_COUNT = 3
 private const val BYTES_PER_FLOAT = 4
+private const val STRIDE = (POSITION_COMPONENT_COUNT + COLOR_COMPONENT_COUNT) * BYTES_PER_FLOAT
 
-private const val U_COLOR = "u_Color"
+//private const val U_COLOR = "u_Color"
 private const val A_POSITION = "a_Position"
+private const val A_COLOR = "a_Color"
+private const val U_MATRIX = "u_Matrix"
 
+/**
+ * A triangle fan begins with a center vertex, using the next two vertices to create the first triangle.
+ * Each subsequent vertex will create another triangle, fanning around the original center point.
+ * To complete the fan, we just repeat the second point at the end.
+ *
+ * The focal length is calculated by 1/tangent of (field of vision/2). The field of vision must be less than 180 degrees.
+ *
+ * https://developer.android.com/reference/android/opengl/package-summary
+ */
 class AirHockeyRenderer(
     private val context: Context
 ) : BaseGLRenderer() {
 
     private var program: Int = 0
-    private var uColorLocation: Int = 0
+    // private var uColorLocation: Int = 0
     private var aPositionLocation: Int = 0
+    private var aColorLocation: Int = 0
+    private var uMatrixLocation: Int = 0
 
     private var vertexData: FloatBuffer
+    private val projectionMatrix = FloatArray(16)
+    private val modelMatrix = FloatArray(16)
 
     // BOTTOM-LEFT ; TOP-LEFT ; TOP-RIGHT ; BOTTOM-RIGHT
+    /*
     private val tableVertices = floatArrayOf(
         0.0f, 0.0f,
         0.0f, 14.0f,
         9.0f, 14.0f,
         9.0f, 0.0f
     )
+     */
 
     /*
     private val tableVerticesWithTriangles = floatArrayOf(
@@ -53,31 +73,42 @@ class AirHockeyRenderer(
         4.5f, 12.0f
     )
      */
+    /*
     private val tableVerticesWithTriangles = floatArrayOf(
-        // Triangle 1: BOTTOM-LEFT ; TOP-RIGHT ; TOP-LEFT
-        -0.5f, -0.5f,
-        0.5f, 0.5f,
-        -0.5f, 0.5f,
-        // Triangle 2: BOTTOM-LEFT ; BOTTOM-RIGHT ; TOP-RIGHT
-        -0.5f, -0.5f,
-        0.5f, -0.5f,
-        0.5f, 0.5f,
-        // Line 1: LEFT ; RIGHT
-        -0.5f, 0f,
-        0.5f, 0f,
-        // Mallets: BOTTOM ; TOP (single points)
-        0f, -0.25f,
-        0f, 0.25f,
-        // Pock in center
-        0.0f, 0.0f,
-        // Border Table 1: BOTTOM-LEFT ; TOP-RIGHT ; TOP-LEFT
-        -0.51f, -0.51f,
-        0.51f, 0.51f,
-        -0.51f, 0.51f,
-        // Border Table 2: BOTTOM-LEFT ; BOTTOM-RIGHT ; TOP-RIGHT
-        -0.51f, -0.51f,
-        0.51f, -0.51f,
-        0.51f, 0.51f
+        // Order of coordinates: X, Y, R, G, B == POS_COMP = 2
+        // // Order of coordinates: X, Y, Z, W, R, G, B == POS_COMP = 4
+        // Triangle Fan
+        0f, 0f, 1f, 1f, 1f,
+        -0.5f, -0.8f, 0.7f, 0.7f, 0.7f,
+        0.5f, -0.8f, 0.7f, 0.7f, 0.7f,
+        0.5f, 0.8f, 0.7f, 0.7f, 0.7f,
+        -0.5f, 0.8f, 0.7f, 0.7f, 0.7f,
+        -0.5f, -0.8f, 0.7f, 0.7f, 0.7f,
+        // Line 1
+        -0.5f, 0f, 1f, 0f, 0f,
+        0.5f, 0f, 1f, 0f, 0f,
+        // Mallets
+        0f, -0.4f, 0f, 0f, 1f,
+        0f, 0.4f, 1f, 0f, 0f
+    )
+    */
+    private val tableVerticesWithTriangles = floatArrayOf(
+        // Order of coordinates: X, Y, Z, W, R, G, B
+        // Triangle Fan
+        0f, 0f, 0f, 1.5f, 1f, 1f, 1f,
+        -0.5f, -0.8f, 0f, 1f, 0.7f, 0.7f, 0.7f,
+        0.5f, -0.8f, 0f, 1f, 0.7f, 0.7f, 0.7f,
+        0.5f, 0.8f, 0f, 2f, 0.7f, 0.7f, 0.7f,
+        -0.5f, 0.8f, 0f, 2f, 0.7f, 0.7f, 0.7f,
+        -0.5f, -0.8f, 0f, 1f, 0.7f, 0.7f, 0.7f,
+
+        // Line 1
+        -0.5f, 0f, 0f, 1.5f, 1f, 0f, 0f,
+        0.5f, 0f, 0f, 1.5f, 1f, 0f, 0f,
+
+        // Mallets
+        0f, -0.4f, 0f, 1.25f, 0f, 0f, 1f,
+        0f, 0.4f, 0f, 1.75f, 1f, 0f, 0f
     )
 
     init {
@@ -118,8 +149,10 @@ class AirHockeyRenderer(
         log("${validateProgram(program)}")
         gl2UseProgram(program)
 
-        uColorLocation = gl2GetUniformLocation(program, U_COLOR)
+        // uColorLocation = gl2GetUniformLocation(program, U_COLOR)
+        aColorLocation = gl2GetAttribLocation(program, A_COLOR)
         aPositionLocation = gl2GetAttribLocation(program, A_POSITION)
+        uMatrixLocation = gl2GetUniformLocation(program, U_MATRIX)
 
         vertexData.position(0)
         // After calling glVertexAttribPointer(), OpenGL now knows where to read the data for the attribute a_Position.
@@ -128,20 +161,96 @@ class AirHockeyRenderer(
             POSITION_COMPONENT_COUNT,
             GL_FLOAT,
             false,
-            0,
+            STRIDE,
+            vertexData
+        )
+        gl2EnableVertexAttribArray(aPositionLocation)
+
+        vertexData.position(POSITION_COMPONENT_COUNT)
+        // Associate color to shader
+        gl2VertexAttribPointer(
+            aColorLocation,
+            COLOR_COMPONENT_COUNT,
+            GL_FLOAT,
+            false,
+            STRIDE,
             vertexData
         )
 
-        gl2EnableVertexAttribArray(aPositionLocation)
+        // Associate color to shader
+        gl2EnableVertexAttribArray(aColorLocation)
 
     }
 
     override fun onSurfaceChanged(unused: GL10?, width: Int, height: Int) {
-        super.onSurfaceChanged(unused, width, height)
+        gl2ViewPort(width = width, height = height)
+
+        /*
+        val aspectRatio = if (width > height)
+            width.toFloat() / height.toFloat()
+        else
+            height.toFloat() / width.toFloat()
+
+        if (width > height) {
+            // Landscape
+            orthographic(
+                destinationArray = projectionMatrix,
+                mOffset = 0,
+                left = -aspectRatio,
+                right = aspectRatio,
+                bottom = -1.0f,
+                top = 1.0f,
+                near = -1.0f,
+                far = 1.0f
+            )
+        } else {
+            // Portrait or square
+            orthographic(
+                destinationArray = projectionMatrix,
+                mOffset = 0,
+                left = -1.0f,
+                right = 1.0f,
+                bottom = -aspectRatio,
+                top = aspectRatio,
+                near = -1.0f,
+                far = 1.0f
+            )
+        }
+        */
+
+        perspectiveM(
+            destinationArray = projectionMatrix,
+            offset = 0,
+            fovY = 45.0f,
+            aspect = width.toFloat() / height.toFloat(),
+            zNear = 1.0f,
+            zFar = 10.0f
+        )
+        Matrix.setIdentityM(modelMatrix, 0)
+        Matrix.translateM(
+            modelMatrix,
+            0,
+            0.0f,
+            0.0f,
+            -2.0f
+        )
+
+        val temp = FloatArray(16)
+        Matrix.multiplyMM(
+            temp,
+            0,
+            projectionMatrix,
+            0,
+            modelMatrix,
+            0
+        )
+        System.arraycopy(temp, 0, projectionMatrix, 0, temp.size)
+
     }
 
     override fun onDrawFrame(unused: GL10?) {
         gl2Clear()
+        gl2UniformMatrix4fv(uMatrixLocation, 1, false, projectionMatrix, 0)
 
         //gl2Uniform4f(uColorLocation, 1.0f, 0.0f, 0.0f, 1.0f)
         //gl2DrawArrays(GL_TRIANGLES, 11, 6)
@@ -153,7 +262,7 @@ class AirHockeyRenderer(
          * We want to start out by drawing a white table, so we set red, green, and blue to 1.0f for full brightness.
          * The alpha value doesn’t matter, but we still need to specify it since a color has four components.
          */
-        gl2Uniform4f(uColorLocation, 1.0f, 1.0f, 1.0f, 1.0f)
+        // gl2Uniform4f(uColorLocation, 1.0f, 1.0f, 1.0f, 1.0f)
 
         /**
          * Once we’ve specified the color, we then draw our table with a call to glDrawArrays(GLES20.GL_TRIANGLES, 0, 6).
@@ -163,8 +272,8 @@ class AirHockeyRenderer(
          * and the third argument tells OpenGL to read in six vertices.
          * Since there are three vertices per triangle, this call will end up drawing two triangles.
          */
-        gl2DrawArrays(GL_TRIANGLES, 0, 6)
-
+        //gl2DrawArrays(GL_TRIANGLES, 0, 6)
+        gl2DrawArrays(GL_TRIANGLE_FAN, 0, 6)
 
         /**
          * We set the color to red by passing in 1.0f to the first component (red) and 0.0f to green and blue.
@@ -174,15 +283,15 @@ class AirHockeyRenderer(
          * means that the number 6 corresponds to six vertices after the first vertex, or the seventh vertex.
          * Since there are two vertices per line, we’ll end up drawing one line using these positions:
          */
-        gl2Uniform4f(uColorLocation, 1.0f, 0.0f, 0.0f, 1.0f)
+        // gl2Uniform4f(uColorLocation, 1.0f, 0.0f, 0.0f, 1.0f)
         gl2DrawArrays(GL_LINES, 6, 2)
 
         // Draw the first mallet in blue
-        gl2Uniform4f(uColorLocation, 0.0f, 0.0f, 1.0f, 1.0f)
+        // gl2Uniform4f(uColorLocation, 0.0f, 0.0f, 1.0f, 1.0f)
         gl2DrawArrays(GL_POINTS, 8, 1)
 
         // Draw the first mallet in red
-        gl2Uniform4f(uColorLocation, 1.0f, 0.0f, 0.0f, 1.0f)
+        // gl2Uniform4f(uColorLocation, 1.0f, 0.0f, 0.0f, 1.0f)
         gl2DrawArrays(GL_POINTS, 9, 1)
 
         // CHALLENGES
