@@ -232,7 +232,15 @@ class AirHockeyRenderer(
             0,
             0.0f,
             0.0f,
-            -2.0f
+            -2.5f
+        )
+        Matrix.rotateM(
+            modelMatrix,
+            0,
+            -60.0f,
+            1.0f,
+            0.0f,
+            0.0f
         )
 
         val temp = FloatArray(16)
